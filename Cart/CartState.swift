@@ -1,101 +1,77 @@
 import Foundation
+import Combine
 
 class CartViewModel: ObservableObject {
     @Published var cartItems: [CartItem] = []
+    @Published var orderId: String?
+    @Published var errorMessage: String?
+    @Published var isLoading = false
 
-    private let storageKey = "cart_items"
+    private var cancellables = Set<AnyCancellable>()
 
-    init() {
-        loadFromAppStorage()
-    }
+    func submitOrder(token: String) {
+        guard let url = URL(string: "http://localhost:3000/api/orders") else { return }
 
-    func addToCart(_ product: Product) {
-        // Tìm xem đã có trong cart chưa
-        if let index = cartItems.firstIndex(where: { $0.product.id == product.id }) {
-            let currentItem = cartItems[index]
-            // Kiểm tra stock
-            if currentItem.quantity < product.stock {
-                cartItems[index].quantity += 1
-                saveToAppStorage()
-            } else {
-                print("⚠️ Vượt quá tồn kho")
-            }
-        } else {
-            // Thêm mới
-            guard product.stock > 0 else {
-                print("⚠️ Hết hàng")
-                return
-            }
+        let payload = [
+            "cartData": cartItems.map { ["productId": $0.productId, "quantity": $0.quantity] }
+        ]
 
-            let newItem = CartItem(id: product.id, product: product, quantity: 1)
-            cartItems.append(newItem)
-            saveToAppStorage()
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        } catch {
+            self.errorMessage = "Lỗi khi tạo dữ liệu gửi"
+            return
         }
+
+        isLoading = true
+
+        URLSession.shared.dataTaskPublisher(for: request)
+            .tryMap { data, response -> [String: Any] in
+                guard let httpResp = response as? HTTPURLResponse,
+                      200..<300 ~= httpResp.statusCode else {
+                    throw URLError(.badServerResponse)
+                }
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                return json ?? [:]
+            }
+            .receive(on: DispatchQueue.main)
+            .sink(receiveCompletion: { completion in
+                self.isLoading = false
+                if case .failure(let error) = completion {
+                    self.errorMessage = error.localizedDescription
+                }
+            }, receiveValue: { response in
+                self.orderId = response["orderId"] as? String
+                if let failed = response["failed"] as? [[String: Any]] {
+                    let failedIds = failed.compactMap { $0["productId"] as? String }
+                    self.cartItems = self.cartItems.map { item in
+                        var newItem = item
+                        newItem.isOverStock = failedIds.contains(item.productId)
+                        return newItem
+                    }
+                }
+            })
+            .store(in: &cancellables)
     }
 
-    func removeFromCart(_ product: Product) {
-        cartItems.removeAll { $0.product.id == product.id }
-        saveToAppStorage()
-    }
-
-    func increaseQuantity(_ item: CartItem) {
-        if let index = cartItems.firstIndex(where: { $0.id == item.id }),
-           cartItems[index].quantity < item.product.stock {
+    func increaseQuantity(for item: CartItem) {
+        if let index = cartItems.firstIndex(of: item) {
             cartItems[index].quantity += 1
-            saveToAppStorage()
         }
     }
 
-    func decreaseQuantity(_ item: CartItem) {
-        if let index = cartItems.firstIndex(where: { $0.id == item.id }) {
+    func decreaseQuantity(for item: CartItem) {
+        if let index = cartItems.firstIndex(of: item), cartItems[index].quantity > 1 {
             cartItems[index].quantity -= 1
-            if cartItems[index].quantity <= 0 {
-                cartItems.remove(at: index)
-            }
-            saveToAppStorage()
         }
     }
 
-    private func saveToAppStorage() {
-        if let data = try? JSONEncoder().encode(cartItems) {
-            UserDefaults.standard.set(data, forKey: storageKey)
-        }
-    }
-
-    func deleteCartItem(at offsets: IndexSet) {
-    for index in offsets {
-        if index < cartItems.count {
-            cartItems.remove(at: index)
-        }
-    }
-    saveToAppStorage()
-}
-
- @Published var itemToDelete: CartItem? = nil  // CartItem đang chờ xác nhận xóa
-
-    // Các hàm add/remove/load/save như trước...
-
-    func requestDelete(at indexSet: IndexSet) {
-        if let index = indexSet.first, index < cartItems.count {
-            itemToDelete = cartItems[index]
-        }
-    }
-
-    func confirmDelete() {
-        guard let item = itemToDelete else { return }
-        cartItems.removeAll { $0.id == item.id }
-        itemToDelete = nil
-        saveToAppStorage()
-    }
-
-    func cancelDelete() {
-        itemToDelete = nil
-    }
-
-    private func loadFromAppStorage() {
-        if let data = UserDefaults.standard.data(forKey: storageKey),
-           let savedItems = try? JSONDecoder().decode([CartItem].self, from: data) {
-            self.cartItems = savedItems
-        }
+    func removeItem(at offsets: IndexSet) {
+        cartItems.remove(atOffsets: offsets)
     }
 }
