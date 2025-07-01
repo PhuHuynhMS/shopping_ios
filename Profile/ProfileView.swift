@@ -1,44 +1,60 @@
-import SwiftUI
-
 struct ProfileView: View {
-    @StateObject private var viewModel = ProfileViewModel()
+    @StateObject var viewModel = ProfileViewModel()
+    @State private var selectedOrder: Order?
+
+    let userId = "user-123"              // ví dụ
+    let token = "eyJhbGciOi..."          // ví dụ token
 
     var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                // Avatar
-                if let url = viewModel.user.avatarURL {
-                    Image(url)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 120, height: 120)
-                        .clipShape(Circle())
-                } else {
-                    Image(systemName: "person.crop.circle.fill")
-                        .resizable()
-                        .frame(width: 120, height: 120)
-                        .foregroundColor(.gray)
-                }
-
-                // Thông tin
-                Text(viewModel.user.name)
-                    .font(.title2)
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("👤 Hồ sơ người dùng")
+                    .font(.title)
                     .bold()
 
-                Text(viewModel.user.email)
-                    .foregroundColor(.secondary)
-
-                // Nút
-                Button("Đăng xuất") {
-                    viewModel.logout()
+                if let error = viewModel.errorMessage {
+                    Text(error)
+                        .foregroundColor(.red)
                 }
-                .foregroundColor(.red)
-                .padding(.top)
+
+                Divider()
+                
+                Text("🧾 Đơn hàng của bạn")
+                    .font(.headline)
+
+                if viewModel.isLoading {
+                    ProgressView("Đang tải đơn hàng...")
+                } else {
+                    List(viewModel.orders) { order in
+                        Button {
+                            selectedOrder = order
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(order.productName)
+                                        .font(.headline)
+                                    Text("Trạng thái: \(order.status)")
+                                        .font(.subheadline)
+                                        .foregroundColor(.gray)
+                                }
+                                Spacer()
+                                Text("$\(order.totalPrice, specifier: "%.2f")")
+                                    .bold()
+                            }
+                        }
+                    }
+                    .listStyle(.plain)
+                }
 
                 Spacer()
             }
             .padding()
-            .navigationTitle("Hồ sơ cá nhân")
+            .navigationDestination(item: $selectedOrder) { order in
+                OrderDetailView(order: order)
+            }
+            .onAppear {
+                viewModel.fetchOrders(for: userId, token: token)
+            }
         }
     }
 }

@@ -1,19 +1,25 @@
-import SwiftUI
+import Foundation
 
+@MainActor
 class ProfileViewModel: ObservableObject {
-    @Published var user: User = User(
-        id: UUID(),
-        name: "Nguyễn Văn A",
-        email: "vana@example.com",
-        avatarURL: nil
-    )
+    @Published var orders: [Order] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
 
-    // Hàm cập nhật thông tin (demo)
-    func updateName(to newName: String) {
-        user.name = newName
-    }
-
-    func logout() {
-        // Gửi thông báo logout hoặc reset trạng thái
+    func fetchOrders(for userId: String, token: String) {
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                let fetchedOrders = try await APIService.shared.fetchOrders(userId: userId, token: token)
+                self.orders = fetchedOrders
+            } catch APIError.unauthorized {
+                errorMessage = "Bạn chưa đăng nhập hoặc token đã hết hạn."
+            } catch {
+                errorMessage = "Lỗi khi tải đơn hàng. Vui lòng thử lại."
+            }
+            isLoading = false
+        }
     }
 }

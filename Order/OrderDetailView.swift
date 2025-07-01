@@ -1,45 +1,24 @@
 import SwiftUI
 
-struct OrderListView: View {
-    @StateObject private var viewModel = OrderViewModel()
+struct OrderDetailView: View {
+    let order: Order
 
     var body: some View {
-        NavigationView {
-            Group {
-                if viewModel.isLoading {
-                    ProgressView("Đang tải đơn hàng...")
-                } else if let error = viewModel.errorMessage {
-                    VStack {
-                        Text("❌ \(error)")
-                            .foregroundColor(.red)
-                        Button("Thử lại") {
-                            viewModel.fetchOrders()
-                        }
-                    }
-                } else {
-                    List(viewModel.orders) { order in
-                        NavigationLink(destination: OrderDetailView(order: order)) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Mã đơn: \(order.id.uuidString.prefix(8))")
-                                    .font(.headline)
-                                Text(order.createdAt, style: .date)
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
-                                Text("Tổng tiền: \(Int(order.total))đ")
-                                    .fontWeight(.semibold)
-                                Text("Trạng thái: \(order.status.rawValue)")
-                                    .foregroundColor(.blue)
-                                    .font(.footnote)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Đơn hàng của tôi")
-            .onAppear {
-                viewModel.fetchOrders()
-            }
+        VStack(alignment: .leading, spacing: 16) {
+            Text("🧾 Chi tiết đơn hàng")
+                .font(.title2)
+                .bold()
+            
+            Text("🛒 Sản phẩm: \(order.productName)")
+            Text("📦 Số lượng: \(order.quantity)")
+            Text("💵 Tổng tiền: $\(order.totalPrice, specifier: "%.2f")")
+            Text("📅 Ngày đặt: \(order.orderDate.formatted(date: .abbreviated, time: .shortened))")
+            Text("🚚 Trạng thái: \(order.status)")
+                .foregroundColor(order.status == "Delivered" ? .green : .orange)
+
+            Spacer()
         }
+        .padding()
+        .navigationTitle("Đơn hàng #\(order.id)")
     }
 }
