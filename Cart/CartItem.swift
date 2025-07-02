@@ -1,13 +1,15 @@
-import Foundation
-
-struct CartItem: Identifiable, Codable, Hashable {
-    let id = UUID()
-    var productId: String
-    var name: String
+struct CartItem: Identifiable {
+    let id: String
+    let name: String
     var quantity: Int
-    var isOverStock: Bool = false
+}
 
-    enum CodingKeys: String, CodingKey {
-        case productId, name, quantity
+struct StockError: Identifiable, Decodable {
+    let id: String
+    let quantity: Int
+    let stock: Int
+    
+    var errorMessage: String {
+        "Bạn chọn \(quantity), nhưng tồn kho chỉ còn \(stock)"
     }
 }

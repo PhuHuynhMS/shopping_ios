@@ -1,89 +1,82 @@
-import SwiftUI
-
 struct CartView: View {
-    @StateObject var viewModel = CartViewModel()
-    @State private var token = "your_jwt_token_here"
+    @State private var cartItems: [CartItem] = [
+        CartItem(id: "1", name: "Áo thun", quantity: 5),
+        CartItem(id: "2", name: "Quần jean", quantity: 3),
+        CartItem(id: "3", name: "Giày sneaker", quantity: 1)
+    ]
+    
+    @State private var stockErrors: [StockError] = []
+    @State private var isProcessing = false
 
     var body: some View {
-        NavigationView {
-            VStack {
-                if viewModel.cartItems.isEmpty {
-                    Text("🛒 Giỏ hàng trống")
-                        .font(.title3)
-                        .foregroundColor(.gray)
-                } else {
-                    List {
-                        ForEach(viewModel.cartItems) { item in
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text(item.name)
-                                        .font(.headline)
-                                    Spacer()
-                                    HStack {
-                                        Button(action: {
-                                            viewModel.decreaseQuantity(for: item)
-                                        }) {
-                                            Image(systemName: "minus.circle")
-                                        }
-
-                                        Text("\(item.quantity)")
-                                            .padding(.horizontal, 8)
-
-                                        Button(action: {
-                                            viewModel.increaseQuantity(for: item)
-                                        }) {
-                                            Image(systemName: "plus.circle")
-                                        }
-                                    }
-                                }
-
-                                if item.isOverStock {
-                                    Text("⚠️ Vượt quá số lượng trong kho")
-                                        .font(.caption)
-                                        .foregroundColor(.red)
-                                }
+        VStack {
+            List {
+                Section(header: Text("Giỏ hàng")) {
+                    ForEach(cartItems) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(item.name)
+                                    .font(.headline)
+                                Spacer()
+                                Text("Số lượng: \(item.quantity)")
                             }
-                            .padding(.vertical, 4)
+
+                            if let error = stockErrors.first(where: { $0.id == item.id }) {
+                                Text(error.errorMessage)
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                                    .padding(.top, 2)
+                            }
                         }
-                        .onDelete(perform: viewModel.removeItem)
+                        .padding(8)
+                        .background(
+                            stockErrors.contains(where: { $0.id == item.id }) ?
+                            Color.red.opacity(0.1) : Color.clear
+                        )
+                        .cornerRadius(8)
                     }
                 }
-
-                if viewModel.isLoading {
-                    ProgressView("Đang đặt hàng...")
-                        .padding()
-                }
-
-                if let orderId = viewModel.orderId {
-                    Text("✅ Đặt hàng thành công với mã: \(orderId)")
-                        .foregroundColor(.green)
-                        .padding(.top, 8)
-                }
-
-                if let error = viewModel.errorMessage {
-                    Text("❌ \(error)")
-                        .foregroundColor(.red)
-                        .padding(.top, 8)
-                }
-
-                Button("Đặt hàng") {
-                    viewModel.submitOrder(token: token)
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(12)
-                .padding(.horizontal)
             }
-            .navigationTitle("Giỏ hàng")
-            .onAppear {
-                // Dữ liệu demo
-                viewModel.cartItems = [
-                    CartItem(productId: "p1", name: "Product A", quantity: 3),
-                    CartItem(productId: "p2", name: "Product B", quantity: 12)
-                ]
+            
+            Button(action: {
+                Task {
+                    await handlePay()
+                }
+            }) {
+                Text(isProcessing ? "Đang xử lý..." : "Thanh toán")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(isProcessing ? Color.gray : Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
             }
+            .disabled(isProcessing)
+            .padding()
         }
+        .navigationTitle("Giỏ hàng")
+    }
+
+    func handlePay() async {
+        isProcessing = true
+        defer { isProcessing = false }
+
+        let responseErrors: [StockError] = await simulateCreateOrder(cart: cartItems)
+
+        if responseErrors.isEmpty {
+            stockErrors = []
+            print("✅ Đặt hàng thành công")
+        } else {
+            stockErrors = responseErrors
+        }
+    }
+
+    func simulateCreateOrder(cart: [CartItem]) async -> [StockError] {
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+
+        // Giả lập trả về lỗi cho một vài sản phẩm
+        return [
+            StockError(id: "1", quantity: 5, stock: 2),
+            StockError(id: "2", quantity: 3, stock: 1)
+        ]
     }
 }
