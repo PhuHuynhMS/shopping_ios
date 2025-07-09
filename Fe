@@ -1,0 +1,25 @@
+import CoreML
+import Vision
+import UIKit
+
+func extractFeatureVector(from image: UIImage, completion: @escaping ([Double]?) -> Void) {
+    guard let cgImage = image.cgImage else {
+        completion(nil)
+        return
+    }
+
+    let model = try! VNCoreMLModel(for: MobileNetV2_Features().model)
+    let request = VNCoreMLRequest(model: model) { req, _ in
+        guard let results = req.results as? [VNCoreMLFeatureValueObservation],
+              let array = results.first?.featureValue.multiArrayValue else {
+            completion(nil)
+            return
+        }
+
+        let vector = (0..<array.count).map { array[$0].doubleValue }
+        completion(vector)
+    }
+
+    let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    try? handler.perform([request])
+}
