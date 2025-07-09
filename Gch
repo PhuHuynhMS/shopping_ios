@@ -1,0 +1,62 @@
+import SwiftUI
+
+struct ContentView: View {
+    @State private var selectedImage: UIImage?
+    @State private var showImagePicker = false
+    @State private var similarProducts: [Product] = []
+
+    // Dữ liệu sản phẩm mẫu (vector giả lập)
+    let products = [
+        Product(id: "1", name: "Áo trắng", imageName: "product1", featureVector: [/* vector mẫu */]),
+        Product(id: "2", name: "Quần jean", imageName: "product2", featureVector: [/* vector mẫu */]),
+        Product(id: "3", name: "Giày sneaker", imageName: "product3", featureVector: [/* vector mẫu */]),
+    ]
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 16) {
+                if let selectedImage = selectedImage {
+                    Image(uiImage: selectedImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 200)
+                        .cornerRadius(12)
+                }
+
+                Button("Chọn ảnh") {
+                    showImagePicker = true
+                }
+
+                Button("Tìm sản phẩm tương tự") {
+                    if let selectedImage = selectedImage {
+                        extractFeatureVector(from: selectedImage) { vector in
+                            guard let queryVector = vector else { return }
+                            let results = products
+                                .map { ($0, cosineSimilarity(queryVector, $0.featureVector)) }
+                                .sorted { $0.1 > $1.1 }
+                                .prefix(3)
+                                .map { $0.0 }
+
+                            similarProducts = results
+                        }
+                    }
+                }
+
+                List(similarProducts) { product in
+                    HStack {
+                        Image(product.imageName)
+                            .resizable()
+                            .frame(width: 50, height: 50)
+                            .cornerRadius(6)
+                        Text(product.name)
+                    }
+                }
+            }
+            .padding()
+            .navigationTitle("Tìm kiếm bằng ảnh")
+            .sheet(isPresented: $showImagePicker) {
+                ImagePicker(selectedImage: $selectedImage)
+            }
+        }
+    }
+}
