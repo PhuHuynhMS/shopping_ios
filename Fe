@@ -1,6 +1,11 @@
+import CoreML
+import Vision
+import UIKit
+
 func extractFeatureVector(from image: UIImage) async throws -> [Double]? {
     guard let cgImage = image.cgImage else { return nil }
 
+    // Load mô hình ML
     let model = try MobileNetV2_FeatureExtractor(configuration: .init()).model
     let visionModel = try VNCoreMLModel(for: model)
 
@@ -11,17 +16,24 @@ func extractFeatureVector(from image: UIImage) async throws -> [Double]? {
                 return
             }
 
-            guard let results = request.results as? [VNCoreMLFeatureValueObservation],
-                  let array = results.first?.featureValue.multiArrayValue else {
+            guard let result = request.results?.first as? VNCoreMLFeatureValueObservation,
+                  let multiArray = result.featureValue.multiArrayValue else {
                 continuation.resume(returning: nil)
                 return
             }
 
-            // Flatten: [1, 1280, 1, 1] → [1280]
-            let vector = (0..<array.count).map { array[$0].doubleValue }
+            // Flatten multiArray → [Double]
+            let vector = (0..<multiArray.count).map { multiArray[$0].doubleValue }
             continuation.resume(returning: vector)
         }
 
-        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+        request.imageCropAndScaleOption = .centerCrop  // Resize ảnh về 224x224 tự động
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+        } catch {
+            continuation.resume(throwing: error)
+        }
     }
 }
