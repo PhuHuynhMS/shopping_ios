@@ -1,25 +1,27 @@
-import CoreML
-import Vision
-import UIKit
+func extractFeatureVector(from image: UIImage) async throws -> [Double]? {
+    guard let cgImage = image.cgImage else { return nil }
 
-func extractFeatureVector(from image: UIImage, completion: @escaping ([Double]?) -> Void) {
-    guard let cgImage = image.cgImage else {
-        completion(nil)
-        return
-    }
+    let model = try MobileNetV2_FeatureExtractor(configuration: .init()).model
+    let visionModel = try VNCoreMLModel(for: model)
 
-    let model = try! VNCoreMLModel(for: MobileNetV2_Features().model)
-    let request = VNCoreMLRequest(model: model) { req, _ in
-        guard let results = req.results as? [VNCoreMLFeatureValueObservation],
-              let array = results.first?.featureValue.multiArrayValue else {
-            completion(nil)
-            return
+    return try await withCheckedThrowingContinuation { continuation in
+        let request = VNCoreMLRequest(model: visionModel) { request, error in
+            if let error = error {
+                continuation.resume(throwing: error)
+                return
+            }
+
+            guard let results = request.results as? [VNCoreMLFeatureValueObservation],
+                  let array = results.first?.featureValue.multiArrayValue else {
+                continuation.resume(returning: nil)
+                return
+            }
+
+            // Flatten: [1, 1280, 1, 1] → [1280]
+            let vector = (0..<array.count).map { array[$0].doubleValue }
+            continuation.resume(returning: vector)
         }
 
-        let vector = (0..<array.count).map { array[$0].doubleValue }
-        completion(vector)
+        try? VNImageRequestHandler(cgImage: cgImage).perform([request])
     }
-
-    let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-    try? handler.perform([request])
 }
