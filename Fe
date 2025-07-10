@@ -2,38 +2,66 @@ import CoreML
 import Vision
 import UIKit
 
-func extractFeatureVector(from image: UIImage) async throws -> [Double]? {
-    guard let cgImage = image.cgImage else { return nil }
+extension ProductViewModel {
+    func extractFeatureVector(from image: UIImage) async throws -> [Double]? {
+        guard let cgImage = image.cgImage else { return nil }
 
-    // Load mô hình ML
-    let model = try MobileNetV2_FeatureExtractor(configuration: .init()).model
-    let visionModel = try VNCoreMLModel(for: model)
+        let model = try MobileNetV2_FeatureExtractor(configuration: .init()).model
+        let visionModel = try VNCoreMLModel(for: model)
 
-    return try await withCheckedThrowingContinuation { continuation in
-        let request = VNCoreMLRequest(model: visionModel) { request, error in
-            if let error = error {
-                continuation.resume(throwing: error)
-                return
+        return try await withCheckedThrowingContinuation { continuation in
+            let request = VNCoreMLRequest(model: visionModel) { request, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let result = request.results?.first as? VNCoreMLFeatureValueObservation,
+                      let array = result.featureValue.multiArrayValue else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                let vector = (0..<array.count).map { array[$0].doubleValue }
+                continuation.resume(returning: vector)
             }
 
-            guard let result = request.results?.first as? VNCoreMLFeatureValueObservation,
-                  let multiArray = result.featureValue.multiArrayValue else {
-                continuation.resume(returning: nil)
-                return
-            }
+            request.imageCropAndScaleOption = .centerCrop
+            try? VNImageRequestHandler(cgImage: cgImage).perform([request])
+        }
+    }
 
-            // Flatten multiArray → [Double]
-            let vector = (0..<multiArray.count).map { multiArray[$0].doubleValue }
-            continuation.resume(returning: vector)
+    func cosineSimilarity(_ a: [Double], _ b: [Double]) -> Double {
+        let dot = zip(a, b).map(*).reduce(0, +)
+        let normA = sqrt(a.map { $0 * $0 }.reduce(0, +))
+        let normB = sqrt(b.map { $0 * $0 }.reduce(0, +))
+        return dot / (normA * normB + 1e-10)
+    }
+
+    func findTopSimilarProducts(to inputVector: [Double], topN: Int = 5) -> [Product] {
+        let scored = allProducts.map { product in
+            let score = cosineSimilarity(inputVector, product.vector)
+            return (product, score)
         }
 
-        request.imageCropAndScaleOption = .centerCrop  // Resize ảnh về 224x224 tự động
+        return scored
+            .sorted { $0.1 > $1.1 }
+            .prefix(topN)
+            .map { $0.0 }
+    }
 
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        do {
-            try handler.perform([request])
-        } catch {
-            continuation.resume(throwing: error)
+    func handleImageSearch(_ image: UIImage) {
+        Task {
+            do {
+                if let vector = try await extractFeatureVector(from: image) {
+                    let topMatches = findTopSimilarProducts(to: vector)
+                    DispatchQueue.main.async {
+                        self.similarProducts = topMatches
+                    }
+                }
+            } catch {
+                print("❌ Lỗi khi trích vector từ ảnh: \(error)")
+            }
         }
     }
 }
